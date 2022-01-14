@@ -1,0 +1,46 @@
+{
+  "name": "BAH (BCC Academy Helper)",
+  "description": "Automatiseer de BCC Academy web-app!",
+  "author": "Jasper Jakobs",
+  "version": "2.0",
+  "manifest_version": 2,
+  "browser_action": {
+    "default_title": "BCC Academy Helper",
+    "default_popup": "app/html/popup.html"
+  },
+  "icons": {
+    "16": "./assets/img/icon.png",
+    "32": "./assets/img/icon.png",
+    "48": "./assets/img/icon.png",
+    "128": "./assets/img/icon.png"
+  },
+  "web_accessible_resources": [
+    "assets/img/bah_logo.png",
+    "assets/img/bcc_glitched.png",
+    "assets/img/icon.png"
+  ],
+  "background": {
+    "scripts": [
+      "./app/javascript/background/utils.js",
+      "./app/javascript/background/questionnaire.js",
+      "./app/javascript/background/interceptor.js",
+      "./app/javascript/background/install.js"
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.etd-academy.nl/*"],
+      "js": [
+        "./app/javascript/utils.js",
+        "./app/javascript/pageload.js"
+      ]
+    }
+  ],
+  "permissions": [
+    "tabs",
+    "storage",
+    "activeTab",
+    "webRequest",
+    "*://*.etd-academy.nl/*"
+  ]
+}
