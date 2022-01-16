@@ -2,7 +2,6 @@ let correctAnswers = [];
 
 function startQuestionnaire(questions, sessionUUID, rHeaders, requestBody, url) {
     let interval = 0;
-    console.log("Fetching correct answers")
 
     chrome.tabs.query({active: true, currentWindow: true}, function (tabs) {
         chrome.tabs.sendMessage(tabs[0].id, {action: "setOverlayMessage", message: "Juiste antwoorden ophalen..."}, function (response) {
@@ -11,23 +10,37 @@ function startQuestionnaire(questions, sessionUUID, rHeaders, requestBody, url) 
     });
 
     questions.forEach(function(question, index, array) {
-        if (question.questionType !== "single_choice") return;
 
         setTimeout(() => {
             chrome.tabs.query({active: true, currentWindow: true}, function (tabs) {
-                chrome.tabs.sendMessage(tabs[0].id, {action: "setOverlayMessage", message: "Juiste antwoorden ophalen... (" + (index + 1) + "/" + array.length + ")"}, function (response) {
+                chrome.tabs.sendMessage(tabs[0].id, {
+                    action: "setOverlayMessage",
+                    message: "Juiste antwoorden ophalen... (" + (index + 1) + "/" + array.length + ")"
+                }, function (response) {
                     console.log(response);
                 });
             });
-            getCorrectAnswer(question, sessionUUID, rHeaders, requestBody, url)
+
+            switch (question.questionType) {
+                case "single_choice":
+                    getCorrectSingleChoiceAnswer(question, sessionUUID, rHeaders, requestBody, url);
+                    break;
+                case "multiple_choice":
+                    getCorrectMultipleChoiceAnswer(question, sessionUUID, rHeaders, requestBody, url);
+                    break;
+                case "pairing":
+                    getCorrectPairingAnswer(question, sessionUUID, rHeaders, requestBody, url);
+                    break;
+            }
         }, 1250 * interval);
+
         interval++;
     });
 
     setTimeout(() => { runQuestionnaire(rHeaders, requestBody, url) }, 1250 * interval);
 }
 
-function getCorrectAnswer(question, sessionUUID, rHeaders, requestBody, url) {
+function getCorrectSingleChoiceAnswer(question, sessionUUID, rHeaders, requestBody, url) {
     let questionUUID = question.uuid;
     let answers = question.answerData.answers;
     let answerUUID = answers[0].uuid;
@@ -51,17 +64,113 @@ function getCorrectAnswer(question, sessionUUID, rHeaders, requestBody, url) {
     fetch(url, requestOptions)
         .then(response => response.json())
         .then(result => {
-            console.log(result)
             const correctAnswerUUID = result.question.answerData.correctAnswer;
             if (correctAnswerUUID)
-                correctAnswers.push({questionUUID: questionUUID, correctAnswerUUID: correctAnswerUUID});
+                correctAnswers.push({
+                    questionUUID: questionUUID,
+                    correctAnswerUUID: correctAnswerUUID,
+                    questionType: 'single_choice'
+                });
+        })
+        .catch(error => console.log('error', error));
+}
+
+function getCorrectMultipleChoiceAnswer(question, sessionUUID, rHeaders, requestBody, url) {
+    let questionUUID = question.uuid;
+    let answers = question.answerData.answers;
+    let answerUUID = [
+        answers[0].uuid
+    ];
+    url = url.replace("questionnaire_sessions", "given_answers");
+
+    var raw = JSON.stringify({
+        "questionnaireSessionUuid": sessionUUID,
+        "questionUuid": questionUUID,
+        "answer": {
+            "uuids": answerUUID
+        }
+    });
+
+    const requestOptions = {
+        method: 'POST',
+        headers: rHeaders,
+        body: raw,
+        redirect: 'follow'
+    };
+
+    fetch(url, requestOptions)
+        .then(response => response.json())
+        .then(result => {
+            const correctAnswerUUIDs = result.question.answerData.correctAnswers;
+            if (correctAnswerUUIDs)
+                correctAnswers.push({
+                    questionUUID: questionUUID,
+                    correctAnswerUUID: correctAnswerUUIDs,
+                    questionType: 'multiple_choice'
+                });
+        })
+        .catch(error => console.log('error', error));
+}
+
+function getCorrectPairingAnswer(question, sessionUUID, rHeaders, requestBody, url) {
+    const questionUUID = question.uuid;
+    // let answers = question.answerData.answers;
+    const leftAnswers = question.answerData.leftAnswers;
+    const rightAnswers = question.answerData.rightAnswers;
+    let answerUUID = "Array()";
+
+    leftAnswers.forEach(function(leftAnswer, index, array) {
+        answerUUID.push(JSON.stringify(
+            {
+                "left": leftAnswer.uuid,
+                "right": rightAnswers[index].uuid
+            }
+        ));
+    });
+
+    url = url.replace("questionnaire_sessions", "given_answers");
+
+    var raw = JSON.stringify({
+        "questionnaireSessionUuid": sessionUUID,
+        "questionUuid": questionUUID,
+        "answer": {
+            "pairs": answerUUID
+        }
+    });
+
+    const requestOptions = {
+        method: 'POST',
+        headers: rHeaders,
+        body: raw,
+        redirect: 'follow'
+    };
+
+    fetch(url, requestOptions)
+        .then(response => response.json())
+        .then(result => {
+            const correctPairs = result.question.answerData.correctPairs;
+            let correctAnswerUUIDs = Array();
+
+            correctPairs.forEach(function (correctPair, index, array) {
+                const leftAnswer = correctPair.left.uuid;
+                const rightAnswer = correctPair.right.uuid;
+                correctAnswerUUIDs.push(JSON.stringify({
+                    "left": leftAnswer,
+                    "right": rightAnswer
+                }));
+            });
+
+            if (correctAnswerUUIDs)
+                correctAnswers.push({
+                    questionUUID: questionUUID,
+                    correctAnswerUUID: correctAnswerUUIDs,
+                    questionType: 'pairing'
+                });
         })
         .catch(error => console.log('error', error));
 }
 
 function runQuestionnaire(rHeaders, requestBody, url) {
-    console.log("Filling in questionnaire");
-    console.log(correctAnswers);
     chrome.tabs.query({active: true, currentWindow: true}, function (tabs) {
         chrome.tabs.sendMessage(tabs[0].id, {action: "setOverlayMessage", message: "Vragen beantwoorden..."}, function (response) {
             console.log(response);
@@ -81,22 +190,45 @@ function runQuestionnaire(rHeaders, requestBody, url) {
 
     fetch(url, requestOptions)
         .then(response => response.json())
-        .then(result => console.log(result))
         .catch(error => console.log('error', error));
 
     setTimeout(() => {
         let interval = 0;
         correctAnswers.forEach(function(correctAnswer, index, array) {
             setTimeout(() => {
-                answerUrl = url.replace("questionnaire_sessions", "given_answers");
+                let answerUrl = url.replace("questionnaire_sessions", "given_answers");
 
-                var raw = JSON.stringify({
-                    "questionnaireSessionUuid": sessionUUID,
-                    "questionUuid": correctAnswer.questionUUID,
-                    "answer": {
-                        "uuid": correctAnswer.correctAnswerUUID
-                    }
-                });
+                let raw = "";
+
+                switch (correctAnswer.questionType) {
+                    case 'single_choice':
+                        raw = JSON.stringify({
+                            "questionnaireSessionUuid": sessionUUID,
+                            "questionUuid": correctAnswer.questionUUID,
+                            "answer": {
+                                "uuid": correctAnswer.correctAnswerUUID
+                            }
+                        });
+                        break;
+                    case 'multiple_choice':
+                        raw = JSON.stringify({
+                            "questionnaireSessionUuid": sessionUUID,
+                            "questionUuid": correctAnswer.questionUUID,
+                            "answer": {
+                                "uuids": correctAnswer.correctAnswerUUID
+                            }
+                        });
+                        break
+                    case 'pairing':
+                        raw = JSON.stringify({
+                            "questionnaireSessionUuid": sessionUUID,
+                            "questionUuid": correctAnswer.questionUUID,
+                            "answer": {
+                                "pairs": correctAnswer.correctAnswerUUID
+                            }
+                        });
+                        break
+                }
 
                 const requestOptions = {
                     method: 'POST',
@@ -107,7 +239,6 @@ function runQuestionnaire(rHeaders, requestBody, url) {
 
                 fetch(answerUrl, requestOptions)
                     .then(response => response.json())
-                    .then(result => console.log(result))
                     .catch(error => console.log('error', error));
 
                 chrome.tabs.query({active: true, currentWindow: true}, function (tabs) {

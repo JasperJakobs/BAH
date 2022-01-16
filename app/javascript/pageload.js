@@ -21,6 +21,6 @@ window.onload = function() {
             setOverlayMessage(msg.message);
         }
 
-        sendResponse("Message recieved!");
+        sendResponse("Frontend changed!");
     });
 }

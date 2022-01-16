@@ -11,7 +11,6 @@ const requests = [
 
 function postInterceptor(url, details) {
     if (url.includes("questionnaire_sessions")) {
-        console.log("Questionnaire started")
         isRequested = true;
 
         const requestHeaders = details.requestHeaders;
@@ -31,11 +30,9 @@ function postInterceptor(url, details) {
             redirect: 'follow'
         };
 
-        console.log("Fetching questions");
         fetch(url, requestOptions)
             .then(response => response.json())
             .then(result => {
-                console.log(result);
                 setTimeout(() => startQuestionnaire(result.questionnaire.questionsToAnswer, sessionUUID, rHeaders, requestBody, url), 750);
             })
             .catch(error => console.log('error', error));
