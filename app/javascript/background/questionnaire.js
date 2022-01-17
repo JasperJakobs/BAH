@@ -1,24 +1,23 @@
 let correctAnswers = [];
 
-function startQuestionnaire(questions, sessionUUID, rHeaders, requestBody, url) {
+function startQuestionnaire(questions, sessionUUID, rHeaders, requestBody, url, tabID) {
     let interval = 0;
 
-    chrome.tabs.query({active: true, currentWindow: true}, function (tabs) {
-        chrome.tabs.sendMessage(tabs[0].id, {action: "setOverlayMessage", message: "Juiste antwoorden ophalen..."}, function (response) {
-            console.log(response);
-        });
+    this.tabID = tabID;
+
+    chrome.tabs.sendMessage(tabID, {action: "setOverlayMessage", message: "Juiste antwoorden ophalen..."}, function (response) {
+        console.log(response);
     });
+
 
     questions.forEach(function(question, index, array) {
 
         setTimeout(() => {
-            chrome.tabs.query({active: true, currentWindow: true}, function (tabs) {
-                chrome.tabs.sendMessage(tabs[0].id, {
-                    action: "setOverlayMessage",
-                    message: "Juiste antwoorden ophalen... (" + (index + 1) + "/" + array.length + ")"
-                }, function (response) {
-                    console.log(response);
-                });
+            chrome.tabs.sendMessage(tabID, {
+                action: "setOverlayMessage",
+                message: "Juiste antwoorden ophalen... (" + (index + 1) + "/" + array.length + ")"
+            }, function (response) {
+                console.log(response);
             });
 
             switch (question.questionType) {
@@ -171,11 +170,9 @@ function getCorrectPairingAnswer(question, sessionUUID, rHeaders, requestBody, u
 }
 
 function runQuestionnaire(rHeaders, requestBody, url) {
-    chrome.tabs.query({active: true, currentWindow: true}, function (tabs) {
-        chrome.tabs.sendMessage(tabs[0].id, {action: "setOverlayMessage", message: "Vragen beantwoorden..."}, function (response) {
+        chrome.tabs.sendMessage(tabID, {action: "setOverlayMessage", message: "Vragen beantwoorden..."}, function (response) {
             console.log(response);
         });
-    });
     const sessionUUID = generateUUID();
     requestBody.questionnaireSessionUuid = sessionUUID;
 
@@ -241,25 +238,21 @@ function runQuestionnaire(rHeaders, requestBody, url) {
                     .then(response => response.json())
                     .catch(error => console.log('error', error));
 
-                chrome.tabs.query({active: true, currentWindow: true}, function (tabs) {
-                    chrome.tabs.sendMessage(tabs[0].id, {
-                        action: "setOverlayMessage",
-                        message: "Vragen beantwoorden... (" + (index + 1) + "/" + array.length + ")"
-                    }, function (response) {
-                        console.log(response);
-                    });
+                chrome.tabs.sendMessage(tabID, {
+                    action: "setOverlayMessage",
+                    message: "Vragen beantwoorden... (" + (index + 1) + "/" + array.length + ")"
+                }, function (response) {
+                    console.log(response);
                 });
 
                 if (index === array.length - 1) {
                     setTimeout(() => {
                         correctAnswers = [];
-                        chrome.tabs.query({active: true, currentWindow: true}, function (tabs) {
-                            chrome.tabs.sendMessage(tabs[0].id, {action: "endRequest"}, function (response) {
-                                console.log(response);
-                            });
-                            chrome.tabs.sendMessage(tabs[0].id, {action: "setOverlayMessage", message: "Toets beëindigen..."}, function (response) {
-                                console.log(response);
-                            });
+                        chrome.tabs.sendMessage(tabID, {action: "endRequest"}, function (response) {
+                            console.log(response);
+                        });
+                        chrome.tabs.sendMessage(tabID, {action: "setOverlayMessage", message: "Toets beëindigen..."}, function (response) {
+                            console.log(response);
                         });
                         endRequest();
                     }, 1250);

@@ -1,6 +1,6 @@
 let isRequested = false;
 
-var bahActive = null;
+let bahActive = null;
 
 let requestBody = "";
 
@@ -11,6 +11,9 @@ const requests = [
 
 function postInterceptor(url, details) {
     if (url.includes("questionnaire_sessions")) {
+
+        let tabID = 0;
+
         isRequested = true;
 
         const requestHeaders = details.requestHeaders;
@@ -30,22 +33,25 @@ function postInterceptor(url, details) {
             redirect: 'follow'
         };
 
-        fetch(url, requestOptions)
-            .then(response => response.json())
-            .then(result => {
-                setTimeout(() => startQuestionnaire(result.questionnaire.questionsToAnswer, sessionUUID, rHeaders, requestBody, url), 750);
-            })
-            .catch(error => console.log('error', error));
-
-
         chrome.tabs.query({active: true, currentWindow: true}, function (tabs) {
-            chrome.tabs.sendMessage(tabs[0].id, {action: "showOverlay"}, function (response) {
+            tabID = tabs[0].id;
+            console.log(tabID);
+            console.log(tabs[0].id);
+
+            chrome.tabs.sendMessage(tabID, {action: "showOverlay"}, function (response) {
                 console.log(response);
             });
-            chrome.tabs.sendMessage(tabs[0].id, {action: "setOverlayMessage", message: "Vragen ophalen.."}, function (response) {
+            chrome.tabs.sendMessage(tabID, {action: "setOverlayMessage", message: "Vragen ophalen.."}, function (response) {
                 console.log(response);
             });
         });
+
+        fetch(url, requestOptions)
+            .then(response => response.json())
+            .then(result => {
+                setTimeout(() => startQuestionnaire(result.questionnaire.questionsToAnswer, sessionUUID, rHeaders, requestBody, url, tabID), 750);
+            })
+            .catch(error => console.log('error', error));
     }
 }
 
