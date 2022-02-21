@@ -5,41 +5,40 @@ function startQuestionnaire(questions, sessionUUID, rHeaders, requestBody, url, 
 
     this.tabID = tabID;
 
-    chrome.tabs.sendMessage(tabID, {action: "setOverlayMessage", message: "Juiste antwoorden ophalen..."}, function (response) {
-        console.log(response);
-    });
+    chrome.tabs.sendMessage(tabID, {action: "setOverlayMessage", message: "Juiste antwoorden ophalen... (0/" + questions.length + ")"}, function (response) {});
 
-
-    questions.forEach(function(question, index, array) {
-
-        setTimeout(() => {
-            chrome.tabs.sendMessage(tabID, {
-                action: "setOverlayMessage",
-                message: "Juiste antwoorden ophalen... (" + (index + 1) + "/" + array.length + ")"
-            }, function (response) {
-                console.log(response);
-            });
-
-            switch (question.questionType) {
-                case "single_choice":
-                    getCorrectSingleChoiceAnswer(question, sessionUUID, rHeaders, requestBody, url);
-                    break;
-                case "multiple_choice":
-                    getCorrectMultipleChoiceAnswer(question, sessionUUID, rHeaders, requestBody, url);
-                    break;
-                case "pairing":
-                    getCorrectPairingAnswer(question, sessionUUID, rHeaders, requestBody, url);
-                    break;
-            }
-        }, 1250 * interval);
-
-        interval++;
-    });
-
-    setTimeout(() => { runQuestionnaire(rHeaders, requestBody, url) }, 1250 * interval);
+    getCorrectAnswers(questions, 0, sessionUUID, rHeaders, requestBody, url);
 }
 
-function getCorrectSingleChoiceAnswer(question, sessionUUID, rHeaders, requestBody, url) {
+function getCorrectAnswers(questions, index, sessionUUID, rHeaders, requestBody, url) {
+    let questionCount = questions.length;
+
+    if (questionCount === index) {
+        runQuestionnaire(rHeaders, requestBody, url, 0, true, generateUUID());
+        return;
+    }
+
+    let question = questions[index];
+
+    chrome.tabs.sendMessage(tabID, {
+        action: "setOverlayMessage",
+        message: "Juiste antwoorden ophalen... (" + (index + 1) + "/" + questionCount + ")"
+    }, function (response) {});
+
+    switch (question.questionType) {
+        case "single_choice":
+            getCorrectSingleChoiceAnswer(questions, index, question, sessionUUID, rHeaders, requestBody, url);
+            break;
+        case "multiple_choice":
+            getCorrectMultipleChoiceAnswer(questions, index, question, sessionUUID, rHeaders, requestBody, url);
+            break;
+        case "pairing":
+            getCorrectPairingAnswer(questions, index, question, sessionUUID, rHeaders, requestBody, url);
+            break;
+    }
+}
+
+function getCorrectSingleChoiceAnswer(questions, index, question, sessionUUID, rHeaders, requestBody, url) {
     let questionUUID = question.uuid;
     let answers = question.answerData.answers;
     let answerUUID = answers[0].uuid;
@@ -70,11 +69,12 @@ function getCorrectSingleChoiceAnswer(question, sessionUUID, rHeaders, requestBo
                     correctAnswerUUID: correctAnswerUUID,
                     questionType: 'single_choice'
                 });
+            getCorrectAnswers(questions, ++index, sessionUUID, rHeaders, requestBody, url);
         })
         .catch(error => console.log('error', error));
 }
 
-function getCorrectMultipleChoiceAnswer(question, sessionUUID, rHeaders, requestBody, url) {
+function getCorrectMultipleChoiceAnswer(questions, index, question, sessionUUID, rHeaders, requestBody, url) {
     let questionUUID = question.uuid;
     let answers = question.answerData.answers;
     let answerUUID = [
@@ -107,11 +107,12 @@ function getCorrectMultipleChoiceAnswer(question, sessionUUID, rHeaders, request
                     correctAnswerUUID: correctAnswerUUIDs,
                     questionType: 'multiple_choice'
                 });
+            getCorrectAnswers(questions, ++index, sessionUUID, rHeaders, requestBody, url);
         })
         .catch(error => console.log('error', error));
 }
 
-function getCorrectPairingAnswer(question, sessionUUID, rHeaders, requestBody, url) {
+function getCorrectPairingAnswer(questions, index, question, sessionUUID, rHeaders, requestBody, url) {
     const questionUUID = question.uuid;
     // let answers = question.answerData.answers;
     const leftAnswers = question.answerData.leftAnswers;
@@ -165,20 +166,84 @@ function getCorrectPairingAnswer(question, sessionUUID, rHeaders, requestBody, u
                     correctAnswerUUID: correctAnswerUUIDs,
                     questionType: 'pairing'
                 });
+
+            getCorrectAnswers(questions, ++index, sessionUUID, rHeaders, requestBody, url);
         })
         .catch(error => console.log('error', error));
 }
 
-function runQuestionnaire(rHeaders, requestBody, url) {
-        chrome.tabs.sendMessage(tabID, {action: "setOverlayMessage", message: "Vragen beantwoorden..."}, function (response) {
-            console.log(response);
-        });
-    const sessionUUID = generateUUID();
-    requestBody.questionnaireSessionUuid = sessionUUID;
+function runQuestionnaire(rHeaders, requestBody, url, questionIndex, newSession, sessionUUID) {
+    chrome.tabs.sendMessage(tabID, {action: "setOverlayMessage", message: "Vragen beantwoorden... (0/" + correctAnswers.length +")"}, function (response) {});
 
-    const raw = JSON.stringify(requestBody);
+    if (newSession) {
+        requestBody.questionnaireSessionUuid = sessionUUID;
 
-    const requestOptions = {
+        let raw = JSON.stringify(requestBody);
+
+        let requestOptions = {
+            method: 'POST',
+            headers: rHeaders,
+            body: raw,
+            redirect: 'follow'
+        };
+
+        url = url.replace("given_answers", "questionnaire_sessions");
+
+        fetch(url, requestOptions)
+            .then(response => response.json())
+            .then(result => {
+                runQuestionnaire(rHeaders, requestBody, url, questionIndex, false, sessionUUID)
+            })
+            .catch(error => console.log('error', error));
+
+        return;
+    }
+
+    let questionCount = correctAnswers.length;
+    let correctAnswer = correctAnswers[questionIndex];
+    // console.log(correctAnswer);
+
+    url = url.replace("questionnaire_sessions", "given_answers");
+
+    if (questionCount === questionIndex) {
+        correctAnswers = [];
+        chrome.tabs.sendMessage(tabID, {action: "endRequest"}, function (response) {});
+        chrome.tabs.sendMessage(tabID, {action: "setOverlayMessage", message: "Alle vragen beantwoord..."}, function (response) {});
+        endRequest();
+        return;
+    }
+
+    switch (correctAnswer.questionType) {
+        case 'single_choice':
+            raw = JSON.stringify({
+                "questionnaireSessionUuid": sessionUUID,
+                "questionUuid": correctAnswer.questionUUID,
+                "answer": {
+                    "uuid": correctAnswer.correctAnswerUUID
+                }
+            });
+            break;
+        case 'multiple_choice':
+            raw = JSON.stringify({
+                "questionnaireSessionUuid": sessionUUID,
+                "questionUuid": correctAnswer.questionUUID,
+                "answer": {
+                    "uuids": correctAnswer.correctAnswerUUID
+                }
+            });
+            break
+        case 'pairing':
+            raw = JSON.stringify({
+                "questionnaireSessionUuid": sessionUUID,
+                "questionUuid": correctAnswer.questionUUID,
+                "answer": {
+                    "pairs": correctAnswer.correctAnswerUUID
+                }
+            });
+            break
+    }
+
+    requestOptions = {
         method: 'POST',
         headers: rHeaders,
         body: raw,
@@ -187,78 +252,13 @@ function runQuestionnaire(rHeaders, requestBody, url) {
 
     fetch(url, requestOptions)
         .then(response => response.json())
+        .then(result => {
+            runQuestionnaire(rHeaders, requestBody, url, ++questionIndex, false, sessionUUID)
+        })
         .catch(error => console.log('error', error));
 
-    setTimeout(() => {
-        let interval = 0;
-        correctAnswers.forEach(function(correctAnswer, index, array) {
-            setTimeout(() => {
-                let answerUrl = url.replace("questionnaire_sessions", "given_answers");
-
-                let raw = "";
-
-                switch (correctAnswer.questionType) {
-                    case 'single_choice':
-                        raw = JSON.stringify({
-                            "questionnaireSessionUuid": sessionUUID,
-                            "questionUuid": correctAnswer.questionUUID,
-                            "answer": {
-                                "uuid": correctAnswer.correctAnswerUUID
-                            }
-                        });
-                        break;
-                    case 'multiple_choice':
-                        raw = JSON.stringify({
-                            "questionnaireSessionUuid": sessionUUID,
-                            "questionUuid": correctAnswer.questionUUID,
-                            "answer": {
-                                "uuids": correctAnswer.correctAnswerUUID
-                            }
-                        });
-                        break
-                    case 'pairing':
-                        raw = JSON.stringify({
-                            "questionnaireSessionUuid": sessionUUID,
-                            "questionUuid": correctAnswer.questionUUID,
-                            "answer": {
-                                "pairs": correctAnswer.correctAnswerUUID
-                            }
-                        });
-                        break
-                }
-
-                const requestOptions = {
-                    method: 'POST',
-                    headers: rHeaders,
-                    body: raw,
-                    redirect: 'follow'
-                };
-
-                fetch(answerUrl, requestOptions)
-                    .then(response => response.json())
-                    .catch(error => console.log('error', error));
-
-                chrome.tabs.sendMessage(tabID, {
-                    action: "setOverlayMessage",
-                    message: "Vragen beantwoorden... (" + (index + 1) + "/" + array.length + ")"
-                }, function (response) {
-                    console.log(response);
-                });
-
-                if (index === array.length - 1) {
-                    setTimeout(() => {
-                        correctAnswers = [];
-                        chrome.tabs.sendMessage(tabID, {action: "endRequest"}, function (response) {
-                            console.log(response);
-                        });
-                        chrome.tabs.sendMessage(tabID, {action: "setOverlayMessage", message: "Toets beëindigen..."}, function (response) {
-                            console.log(response);
-                        });
-                        endRequest();
-                    }, 1250);
-                }
-            }, 1250 * interval);
-            interval++;
-        });
-    }, 1250);
+    chrome.tabs.sendMessage(tabID, {
+        action: "setOverlayMessage",
+        message: "Vragen beantwoorden... (" + (questionIndex + 1) + "/" + correctAnswers.length + ")"
+    }, function (response) {});
 }

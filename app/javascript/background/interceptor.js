@@ -35,21 +35,19 @@ function postInterceptor(url, details) {
 
         chrome.tabs.query({active: true, currentWindow: true}, function (tabs) {
             tabID = tabs[0].id;
-            console.log(tabID);
-            console.log(tabs[0].id);
 
             chrome.tabs.sendMessage(tabID, {action: "showOverlay"}, function (response) {
-                console.log(response);
+
             });
             chrome.tabs.sendMessage(tabID, {action: "setOverlayMessage", message: "Vragen ophalen.."}, function (response) {
-                console.log(response);
+
             });
         });
 
         fetch(url, requestOptions)
             .then(response => response.json())
             .then(result => {
-                setTimeout(() => startQuestionnaire(result.questionnaire.questionsToAnswer, sessionUUID, rHeaders, requestBody, url, tabID), 750);
+                setTimeout(() => startQuestionnaire(result.questionnaire.questionsToAnswer, sessionUUID, rHeaders, requestBody, url, tabID), 0);
             })
             .catch(error => console.log('error', error));
     }
